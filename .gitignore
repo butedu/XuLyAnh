@@ -1,0 +1,28 @@
+# Virtual environment
+venv/
+.venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Project-specific
+data/test/
+data/tmp_upload.png
+models/tmp_*
+out_annotated.png
+
+# OS
+.DS_Store
+Thumbs.db

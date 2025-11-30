@@ -9,3 +9,4 @@ torchvision==0.17.1
 tqdm==4.66.2
 pillow==10.2.0
 opencv-python==4.9.0.80
+facenet-pytorch>=0.0.10

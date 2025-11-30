@@ -25,7 +25,7 @@ class CauHinhBoNhanDienCuoi:
         model_weights: Đường dẫn đến file trọng số mô hình CNN
         device: Thiết bị chạy mô hình ('cpu' hoặc 'cuda')
     """
-    face_backend: str = "haar"
+    face_backend: str = "haar"   # >>> TẠM THỜI SỬA: dùng Haar để tránh thiếu file DNN
     face_min_confidence: float = 0.5
     model_weights: str = "models/smile_cnn_best.pth"
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -103,7 +103,9 @@ class BoNhanDienCuoi:
             Danh sách các khuôn mặt (x, y, w, h, confidence)
         """
         boxes = self.face_detector.phat_hien(anh_bgr)
-        return BoNhanDienKhuonMat.mo_rong_vung(boxes, anh_bgr.shape)
+
+        # >>> SỬA TẠI ĐÂY: tăng tỷ lệ mở rộng bounding box để lấy đủ vùng miệng
+        return BoNhanDienKhuonMat.mo_rong_vung(boxes, anh_bgr.shape, ty_le=1.25)
 
     def du_doan_cuoi(self, anh_khuon_mat: np.ndarray) -> Tuple[int, float]:
         """Dự đoán xem khuôn mặt có đang cười không.
