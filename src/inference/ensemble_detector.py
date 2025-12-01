@@ -19,6 +19,13 @@ try:
     HAS_MTCNN = True
 except ImportError:
     HAS_MTCNN = False
+ 
+# Try to import YOLOv8 face detector (optional)
+try:
+    from .yolo_face_detector import YOLOFaceDetector
+    HAS_YOLO = True
+except Exception:
+    HAS_YOLO = False
 
 
 class EnsembleFaceDetector:
@@ -32,7 +39,7 @@ class EnsembleFaceDetector:
     All detections are merged and deduplicated using IoU threshold.
     """
 
-    def __init__(self, min_face_size: int = 20, iou_threshold: float = 0.3):
+    def __init__(self, min_face_size: int = 20, iou_threshold: float = 0.2):
         """Initialize ensemble detector with multiple backends.
         
         Args:
@@ -76,6 +83,17 @@ class EnsembleFaceDetector:
         else:
             print("[EnsembleFaceDetector] facenet-pytorch not installed; MTCNN skipped")
 
+        # Initialize YOLO face detector (optional)
+        self.yolo_detector = None
+        if HAS_YOLO:
+            try:
+                # Let YOLO wrapper handle model path fallback
+                self.yolo_detector = YOLOFaceDetector()
+                print("[EnsembleFaceDetector] YOLOv8-face detector initialized")
+            except Exception as e:
+                print(f"[EnsembleFaceDetector] Warning: YOLO detector failed: {e}")
+                self.yolo_detector = None
+
     def _convert_mtcnn_to_standard(self, mtcnn_boxes: List[Tuple]) -> List[Tuple[int, int, int, int, float]]:
         """Convert MTCNN box format (x1, y1, x2, y2) to standard (x, y, w, h, confidence)."""
         result = []
@@ -111,28 +129,48 @@ class EnsembleFaceDetector:
         return intersection / union if union > 0 else 0.0
 
     def _deduplicate_boxes(self, all_boxes: List[Tuple[int, int, int, int, float]]) -> List[Tuple[int, int, int, int, float]]:
-        """Remove duplicate detections using IoU threshold.
-        
-        Strategy: sort by confidence (descending), then greedily merge overlapping boxes.
+        """Remove duplicate detections.
+
+        Prefer using OpenCV NMSBoxes (faster and robust). If NMS is not available
+        or fails, falls back to greedy IoU-based deduplication using
+        `self.iou_threshold`.
         """
         if not all_boxes:
             return []
-        
-        # Sort by confidence descending
-        sorted_boxes = sorted(all_boxes, key=lambda b: b[4], reverse=True)
-        
-        kept = []
-        for current in sorted_boxes:
-            is_duplicate = False
-            for kept_box in kept:
-                iou_val = self._iou(current[:4], kept_box[:4])
-                if iou_val > self.iou_threshold:
-                    is_duplicate = True
-                    break
-            if not is_duplicate:
-                kept.append(current)
-        
-        return kept
+
+        try:
+            # Prepare boxes and scores for NMS
+            boxes_xywh = [[int(b[0]), int(b[1]), int(b[2]), int(b[3])] for b in all_boxes]
+            scores = [float(b[4]) for b in all_boxes]
+            # OpenCV expects scoreThreshold and nmsThreshold; we'll use 0.2 and 0.3 defaults
+            indices = cv2.dnn.NMSBoxes(boxes_xywh, scores, score_threshold=0.2, nms_threshold=0.3)
+            kept = []
+            if len(indices) > 0:
+                # indices can be list of lists or flat array
+                if isinstance(indices, (list, tuple)):
+                    flat = [int(i[0]) if isinstance(i, (list, tuple)) else int(i) for i in indices]
+                else:
+                    flat = indices.flatten().tolist()
+                for i in flat:
+                    kept.append(all_boxes[i])
+            else:
+                # nothing passed NMS, fall back to greedy
+                raise RuntimeError('NMS returned no indices')
+            return kept
+        except Exception:
+            # Fallback: greedy IoU-based dedup
+            sorted_boxes = sorted(all_boxes, key=lambda b: b[4], reverse=True)
+            kept = []
+            for current in sorted_boxes:
+                is_duplicate = False
+                for kept_box in kept:
+                    iou_val = self._iou(current[:4], kept_box[:4])
+                    if iou_val > self.iou_threshold:
+                        is_duplicate = True
+                        break
+                if not is_duplicate:
+                    kept.append(current)
+            return kept
 
     def detect(self, image_bgr: np.ndarray) -> List[Tuple[int, int, int, int, float]]:
         """Detect faces using ensemble of multiple detectors.
@@ -174,6 +212,15 @@ class EnsembleFaceDetector:
                 print(f"[EnsembleFaceDetector] MTCNN detected {len(mtcnn_standard)} faces")
             except Exception as e:
                 print(f"[EnsembleFaceDetector] MTCNN detection error: {e}")
+        
+        # YOLOv8-face
+        if self.yolo_detector:
+            try:
+                yolo_boxes = self.yolo_detector.detect_bgr(image_bgr)
+                all_detections.extend(yolo_boxes)
+                print(f"[EnsembleFaceDetector] YOLO detected {len(yolo_boxes)} faces")
+            except Exception as e:
+                print(f"[EnsembleFaceDetector] YOLO detection error: {e}")
         
         print(f"[EnsembleFaceDetector] Total detections before dedup: {len(all_detections)}")
         
