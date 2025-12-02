@@ -1,4 +1,4 @@
-"""Utility helpers for smile classifier training."""
+"""Tiện ích huấn luyện."""
 from __future__ import annotations
 
 import random
@@ -26,48 +26,39 @@ def save_checkpoint(
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler._LRScheduler | None,
     best_metric: float,
-    checkpoint_path: str | Path,
+    path: str | Path,
 ) -> None:
-    checkpoint = {
+    payload = {
         "epoch": epoch,
         "model_state": model.state_dict(),
         "optimizer_state": optimizer.state_dict(),
         "best_metric": best_metric,
     }
     if scheduler is not None:
-        checkpoint["scheduler_state"] = scheduler.state_dict()
-    torch.save(checkpoint, checkpoint_path)
+        payload["scheduler_state"] = scheduler.state_dict()
+    torch.save(payload, path)
 
 
 def load_checkpoint(
-    checkpoint_path: str | Path,
+    path: str | Path,
     model: nn.Module,
     optimizer: torch.optim.Optimizer | None = None,
     scheduler: torch.optim.lr_scheduler._LRScheduler | None = None,
     device: torch.device | str = "cpu",
 ) -> Tuple[int, float]:
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint["model_state"])
+    payload = torch.load(path, map_location=device)
+    model.load_state_dict(payload["model_state"])
     if optimizer is not None:
-        optimizer.load_state_dict(checkpoint["optimizer_state"])
-    if scheduler is not None and "scheduler_state" in checkpoint:
-        scheduler.load_state_dict(checkpoint["scheduler_state"])
-    epoch = int(checkpoint.get("epoch", 0))
-    best_metric = float(checkpoint.get("best_metric", 0.0))
-    return epoch, best_metric
+        optimizer.load_state_dict(payload["optimizer_state"])
+    if scheduler is not None and "scheduler_state" in payload:
+        scheduler.load_state_dict(payload["scheduler_state"])
+    return int(payload.get("epoch", 0)), float(payload.get("best_metric", 0.0))
 
 
-def classification_metrics(
-    targets: np.ndarray,
-    preds: np.ndarray,
-) -> Dict[str, float]:
-    accuracy = accuracy_score(targets, preds)
-    precision = precision_score(targets, preds, zero_division=0)
-    recall = recall_score(targets, preds, zero_division=0)
-    f1 = f1_score(targets, preds, zero_division=0)
+def classification_report(targets: np.ndarray, preds: np.ndarray) -> Dict[str, float]:
     return {
-        "accuracy": float(accuracy),
-        "precision": float(precision),
-        "recall": float(recall),
-        "f1": float(f1),
+        "accuracy": float(accuracy_score(targets, preds)),
+        "precision": float(precision_score(targets, preds, zero_division=0)),
+        "recall": float(recall_score(targets, preds, zero_division=0)),
+        "f1": float(f1_score(targets, preds, zero_division=0)),
     }
