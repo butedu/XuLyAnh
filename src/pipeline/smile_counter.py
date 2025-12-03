@@ -23,7 +23,7 @@ class SmileCounterConfig:
     face_model: str | None = "models/yolov8n-face.pt"
     classifier_weights: str = "models/smile_cnn_best.pth"
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
-    smile_threshold: float = 0.5
+    smile_threshold: float = 0.45  # Ngưỡng 40% để coi là cười
     expand_ratio: float = 1.15
 
 
@@ -45,12 +45,39 @@ class SmileCounter:
         )
 
     def _load_classifier(self, weights: str | Path) -> torch.nn.Module:
+        """Load classifier model, tự động detect architecture từ checkpoint."""
         path = Path(weights)
         if not path.exists():
             raise FileNotFoundError(f"Không tìm thấy trọng số tại {path}")
-        model = build_model()
-        state = torch.load(path, map_location=self.device)
-        model.load_state_dict(state)
+        
+        # Thử load state dict để detect architecture
+        state = torch.load(path, map_location=self.device, weights_only=True)
+        
+        # Nếu là dict với 'model_state_dict', extract nó
+        if isinstance(state, dict) and 'model_state_dict' in state:
+            state = state['model_state_dict']
+        
+        # Detect architecture dựa vào keys trong state dict
+        # SmileNetV2 có 'layer1', 'layer2', 'layer3'
+        # SmileNet chỉ có 'features'
+        from src.classifier.smile_model import SmileNetConfig
+        
+        if any('layer1' in k for k in state.keys()):
+            # SmileNetV2
+            config = SmileNetConfig(model_name="SmileNetV2", use_se_block=True)
+            model = config.build()
+            print("🔍 Detected SmileNetV2 architecture")
+        else:
+            # SmileNet baseline
+            config = SmileNetConfig(model_name="SmileNet")
+            model = config.build()
+            print("🔍 Detected SmileNet architecture")
+        
+        # Load weights
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        if missing or unexpected:
+            print(f"⚠️  Warning: Checkpoint có thể không khớp hoàn toàn")
+        
         model.eval()
         return model.to(self.device)
 
