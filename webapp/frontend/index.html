@@ -24,6 +24,15 @@
             font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         }
 
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes progressGlow {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
         *, *::before, *::after {
             box-sizing: border-box;
         }
@@ -567,6 +576,16 @@
             color: rgba(148, 163, 184, 0.8);
         }
 
+        /* Tracking card hover effects */
+        #peopleList > div {
+            cursor: default;
+        }
+
+        #peopleList > div:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5) !important;
+        }
+
         @media (max-width: 768px) {
             body { padding: 2rem 1.25rem; }
             .hero { grid-template-columns: 1fr; }
@@ -649,6 +668,20 @@
                             <img id="preview" alt="Ảnh tải lên" />
                             <span id="previewPlaceholder" class="empty-preview">Ảnh sẽ hiển thị tại đây sau khi tải lên.</span>
                         </div>
+                        
+                        <!-- Threshold slider cho ảnh -->
+                        <div style="margin: 1rem 0; padding: 1rem; background: rgba(99, 102, 241, 0.08); border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.2);">
+                            <label style="display: block; margin-bottom: 0.75rem; font-weight: 600; color: var(--accent);">
+                                Ngưỡng phát hiện cười (Threshold): <span id="imageThresholdValue">0.40</span>
+                            </label>
+                            <input type="range" id="imageThreshold" min="0" max="1" step="0.05" value="0.40" style="width: 100%; cursor: pointer;" />
+                            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                                <span>0.00 (Dễ)</span>
+                                <span>0.50</span>
+                                <span>1.00 (Khó)</span>
+                            </div>
+                        </div>
+                        
                         <div class="actions">
                             <button id="analyzeBtn" disabled>Phân tích ảnh</button>
                             <div id="status" class="status"></div>
@@ -710,36 +743,102 @@
                         <video id="videoPreview" controls></video>
                         <span id="videoPlaceholder" class="empty-preview">Video sẽ hiển thị tại đây sau khi tải lên.</span>
                     </div>
+                    <div style="margin: 1rem 0; padding: 1rem; background: rgba(99, 102, 241, 0.08); border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.2);">
+                        <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; font-size: 1rem;">
+                            <input type="checkbox" id="enableTracking" style="width: 20px; height: 20px; cursor: pointer;" />
+                            <div>
+                                <strong style="color: var(--accent);">Bật Face Tracking</strong>
+                                <p style="margin: 0.3rem 0 0 0; font-size: 0.85rem; color: var(--text-muted);">Gán ID cố định cho từng người và tính thống kê riêng theo ID (chậm hơn nhưng chi tiết hơn)</p>
+                            </div>
+                        </label>
+                    </div>
+                    
+                    <!-- Threshold slider cho video -->
+                    <div style="margin: 1rem 0; padding: 1rem; background: rgba(34, 211, 238, 0.08); border-radius: 12px; border: 1px solid rgba(34, 211, 238, 0.2);">
+                        <label style="display: block; margin-bottom: 0.75rem; font-weight: 600; color: var(--accent);">
+                            Ngưỡng phát hiện cười (Threshold): <span id="videoThresholdValue">0.40</span>
+                        </label>
+                        <input type="range" id="videoThreshold" min="0" max="1" step="0.05" value="0.40" style="width: 100%; cursor: pointer;" />
+                        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                            <span>0.00 (Dễ)</span>
+                            <span>0.50</span>
+                            <span>1.00 (Khó)</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Frame Skip slider cho video -->
+                    <div style="margin: 1rem 0; padding: 1rem; background: rgba(139, 92, 246, 0.08); border-radius: 12px; border: 1px solid rgba(139, 92, 246, 0.2);">
+                        <label style="display: block; margin-bottom: 0.75rem; font-weight: 600; color: #8b5cf6;">
+                            Bỏ qua khung hình (Frame Skip): <span id="videoFrameSkipValue">0</span> khung hình
+                        </label>
+                        <input type="range" id="videoFrameSkip" min="0" max="10" step="1" value="0" style="width: 100%; cursor: pointer;" />
+                        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                            <span>0 (Xử lý tất cả)</span>
+                            <span>5</span>
+                            <span>10 (Nhanh nhất)</span>
+                        </div>
+                        <p style="margin: 0.5rem 0 0 0; font-size: 0.8rem; color: var(--text-muted); font-style: italic;">💡 Tăng giá trị để xử lý nhanh hơn, giảm để chi tiết hơn</p>
+                    </div>
+                    
                     <div class="actions">
                         <button id="analyzeVideoBtn" disabled>Phân tích video</button>
                         <div id="videoStatus" class="status"></div>
                     </div>
                     <div id="videoError" class="error"></div>
+                    
+                    <!-- Loading progress indicator -->
+                    <div id="videoLoadingProgress" hidden style="margin-top: 1rem; padding: 1.5rem; background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%); border-radius: 16px; border: 2px solid rgba(99, 102, 241, 0.3); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">
+                        <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                            <div class="spinner" style="width: 32px; height: 32px; border: 3px solid rgba(99, 102, 241, 0.2); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                            <div style="flex: 1;">
+                                <div style="font-size: 1.1rem; font-weight: 600; color: var(--accent); margin-bottom: 0.3rem;">Đang xử lý video...</div>
+                                <div style="font-size: 0.9rem; color: var(--text-muted);">Vui lòng chờ, quá trình này có thể mất vài phút tùy thuộc vào độ dài video</div>
+                            </div>
+                        </div>
+                        <div style="width: 100%; height: 6px; background: rgba(148, 163, 184, 0.15); border-radius: 999px; overflow: hidden;">
+                            <div style="width: 100%; height: 100%; background: linear-gradient(90deg, #6366f1, #8b5cf6, #6366f1); background-size: 200% 100%; animation: progressGlow 2s linear infinite;"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="results-meta" id="videoMeta" hidden>
-                    <div class="stat-card">
-                        <span>Tổng khung hình</span>
-                        <strong id="videoTotalFrames">—</strong>
+                    <div class="stat-card" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%); border: 2px solid rgba(99, 102, 241, 0.3);">
+                        <span style="display: flex; align-items: center; gap: 0.4rem;"><span style="font-size: 1.2rem;">🎬</span> Tổng khung hình</span>
+                        <strong id="videoTotalFrames" style="font-size: 1.8rem; color: #6366f1;">—</strong>
                     </div>
-                    <div class="stat-card">
-                        <span>Khung hình phân tích</span>
-                        <strong id="videoProcessedFrames">—</strong>
+                    <div class="stat-card" style="background: linear-gradient(135deg, rgba(34, 211, 238, 0.15) 0%, rgba(6, 182, 212, 0.1) 100%); border: 2px solid rgba(34, 211, 238, 0.3);">
+                        <span style="display: flex; align-items: center; gap: 0.4rem;"><span style="font-size: 1.2rem;">🔍</span> Khung hình phân tích</span>
+                        <strong id="videoProcessedFrames" style="font-size: 1.8rem; color: #22d3ee;">—</strong>
                     </div>
-                    <div class="stat-card">
-                        <span>Lần mỉm cười</span>
-                        <strong id="videoSmileCount">—</strong>
+                    <div class="stat-card" style="background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(22, 163, 74, 0.1) 100%); border: 2px solid rgba(34, 197, 94, 0.3);">
+                        <span style="display: flex; align-items: center; gap: 0.4rem;"><span style="font-size: 1.2rem;">😊</span> Lần mỉm cười</span>
+                        <strong id="videoSmileCount" style="font-size: 1.8rem; color: #22c55e;">—</strong>
                     </div>
                 </div>
 
-                <div id="videoSummary" class="empty-result">
-                    Chưa có dữ liệu video. Hãy chọn video để bắt đầu phân tích.
+                <div id="videoSummary" class="empty-result" style="padding: 2rem; text-align: center; background: rgba(15, 23, 42, 0.5); border-radius: 16px; border: 1px solid rgba(148, 163, 184, 0.15);">
+                    <div style="font-size: 2.5rem; margin-bottom: 1rem; opacity: 0.6;">📊</div>
+                    <div style="font-size: 1rem; color: var(--text-muted); margin-bottom: 0.5rem;">Chưa có dữ liệu video</div>
+                    <div style="font-size: 0.9rem; color: rgba(148, 163, 184, 0.6);">Hãy chọn video để bắt đầu phân tích</div>
+                </div>
+
+                <div id="trackingStats" hidden style="margin-top: 2rem;">
+                    <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.1) 100%); padding: 1.25rem; border-radius: 16px; border: 2px solid rgba(99, 102, 241, 0.3); margin-bottom: 1.5rem; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);">
+                        <h3 style="margin: 0; font-size: 1.3rem; color: var(--accent); display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-size: 1.8rem;">📊</span>
+                            <span>Thống kê theo từng người (Face Tracking)</span>
+                        </h3>
+                        <p style="margin: 0.5rem 0 0 0; color: var(--text-muted); font-size: 0.9rem;">Theo dõi từng người xuất hiện trong video với ID riêng biệt</p>
+                    </div>
+                    <div id="peopleList" style="display: grid; gap: 1.25rem;"></div>
                 </div>
 
                 <div class="annotated-wrapper">
                     <video id="videoResult" controls></video>
-                    <div id="videoResultPlaceholder" class="annotated-placeholder">
-                        Video chú thích sẽ hiển thị ở đây sau khi xử lý.
+                    <div id="videoResultPlaceholder" class="annotated-placeholder" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; min-height: 300px;">
+                        <div style="font-size: 3rem; opacity: 0.5;">🎥</div>
+                        <div style="font-size: 1rem; color: var(--text-muted);">Video đã chú thích sẽ hiển thị ở đây</div>
+                        <div style="font-size: 0.85rem; color: rgba(148, 163, 184, 0.5);">Tải lên video và nhấn "Phân tích video" để bắt đầu</div>
                     </div>
                 </div>
             </section>
@@ -755,6 +854,19 @@
                 <div class="live-view">
                     <video id="liveVideo" autoplay muted playsinline></video>
                     <canvas id="liveOverlay"></canvas>
+                </div>
+                
+                <!-- Threshold slider cho camera -->
+                <div style="margin: 1rem 0; padding: 1rem; background: rgba(34, 197, 94, 0.08); border-radius: 12px; border: 1px solid rgba(34, 197, 94, 0.2);">
+                    <label style="display: block; margin-bottom: 0.75rem; font-weight: 600; color: #22c55e;">
+                        Ngưỡng phát hiện cười (Threshold): <span id="cameraThresholdValue">0.40</span>
+                    </label>
+                    <input type="range" id="cameraThreshold" min="0" max="1" step="0.05" value="0.40" style="width: 100%; cursor: pointer;" />
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                        <span>0.00 (Dễ)</span>
+                        <span>0.50</span>
+                        <span>1.00 (Khó)</span>
+                    </div>
                 </div>
 
                 <div class="live-controls">
@@ -820,6 +932,9 @@
         const videoSummaryEl = document.getElementById('videoSummary');
         const videoResult = document.getElementById('videoResult');
         const videoResultPlaceholder = document.getElementById('videoResultPlaceholder');
+        const enableTracking = document.getElementById('enableTracking');
+        const trackingStats = document.getElementById('trackingStats');
+        const peopleList = document.getElementById('peopleList');
         const liveVideo = document.getElementById('liveVideo');
         const liveOverlay = document.getElementById('liveOverlay');
         const startLiveBtn = document.getElementById('startLiveBtn');
@@ -923,6 +1038,10 @@
         const setVideoLoading = loading => {
             analyzeVideoBtn.disabled = loading || !selectedVideo;
             analyzeVideoBtn.classList.toggle('is-loading', loading);
+            const videoLoadingProgress = document.getElementById('videoLoadingProgress');
+            if (videoLoadingProgress) {
+                videoLoadingProgress.hidden = !loading;
+            }
         };
 
         const resetVideoResults = () => {
@@ -931,7 +1050,16 @@
             videoProcessedFrames.textContent = '—';
             videoSmileCount.textContent = '—';
             videoSummaryEl.className = 'empty-result';
-            videoSummaryEl.textContent = 'Chưa có dữ liệu video. Hãy chọn video để bắt đầu phân tích.';
+            videoSummaryEl.innerHTML = '<div style="font-size: 2.5rem; margin-bottom: 1rem; opacity: 0.6;">📊</div><div style="font-size: 1rem; color: var(--text-muted); margin-bottom: 0.5rem;">Chưa có dữ liệu video</div><div style="font-size: 0.9rem; color: rgba(148, 163, 184, 0.6);">Hãy chọn video để bắt đầu phân tích</div>';
+            
+            // Hide tracking stats
+            const trackingStats = document.getElementById('trackingStats');
+            if (trackingStats) trackingStats.hidden = true;
+            
+            // Remove download button
+            const existingBtn = document.getElementById('downloadVideoBtn');
+            if (existingBtn) existingBtn.remove();
+            
             if (resultVideoUrl) {
                 URL.revokeObjectURL(resultVideoUrl);
                 resultVideoUrl = null;
@@ -1093,6 +1221,7 @@
                 }
                 const formData = new FormData();
                 formData.append('file', frameBlob, 'frame.jpg');
+                formData.append('threshold', cameraThreshold.value);
                 const response = await fetch('/api/detect', { method: 'POST', body: formData });
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ detail: 'Không rõ lỗi' }));
@@ -1212,6 +1341,32 @@
         sectionTabs.forEach(button => {
             button.addEventListener('click', () => activateSection(button.dataset.sectionTarget || 'image'));
         });
+        
+        // Threshold sliders event listeners
+        const imageThreshold = document.getElementById('imageThreshold');
+        const imageThresholdValue = document.getElementById('imageThresholdValue');
+        const videoThreshold = document.getElementById('videoThreshold');
+        const videoThresholdValue = document.getElementById('videoThresholdValue');
+        const cameraThreshold = document.getElementById('cameraThreshold');
+        const cameraThresholdValue = document.getElementById('cameraThresholdValue');
+        const videoFrameSkip = document.getElementById('videoFrameSkip');
+        const videoFrameSkipValue = document.getElementById('videoFrameSkipValue');
+        
+        imageThreshold.addEventListener('input', (e) => {
+            imageThresholdValue.textContent = parseFloat(e.target.value).toFixed(2);
+        });
+        
+        videoThreshold.addEventListener('input', (e) => {
+            videoThresholdValue.textContent = parseFloat(e.target.value).toFixed(2);
+        });
+        
+        cameraThreshold.addEventListener('input', (e) => {
+            cameraThresholdValue.textContent = parseFloat(e.target.value).toFixed(2);
+        });
+        
+        videoFrameSkip.addEventListener('input', (e) => {
+            videoFrameSkipValue.textContent = e.target.value;
+        });
 
         analyzeBtn.addEventListener('click', async () => {
             if (!selectedFile) return;
@@ -1221,6 +1376,7 @@
 
             const formData = new FormData();
             formData.append('file', selectedFile);
+            formData.append('threshold', imageThreshold.value);
 
             try {
                 const response = await fetch('/api/detect', { method: 'POST', body: formData });
@@ -1294,14 +1450,19 @@
             if (!selectedVideo) return;
             activateSection('video');
             setVideoLoading(true);
-            videoStatusEl.textContent = 'Đang xử lý video...';
+            const useTracking = enableTracking.checked;
+            videoStatusEl.textContent = useTracking ? 'Đang xử lý video với tracking...' : 'Đang xử lý video...';
             videoErrorEl.textContent = '';
 
             const formData = new FormData();
             formData.append('file', selectedVideo);
+            formData.append('threshold', videoThreshold.value);
+            formData.append('frame_skip', videoFrameSkip.value);
+
+            const apiEndpoint = useTracking ? '/api/detect-video-tracking' : '/api/detect-video';
 
             try {
-                const response = await fetch('/api/detect-video', { method: 'POST', body: formData });
+                const response = await fetch(apiEndpoint, { method: 'POST', body: formData });
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ detail: 'Không rõ lỗi' }));
                     throw new Error(errorData.detail || 'Không thể phân tích video');
@@ -1321,24 +1482,132 @@
                     ? summary.avg_faces_per_processed_frame.toFixed(2)
                     : null;
 
+                // Get unique person IDs if tracking is enabled
+                const peopleIds = summary.people && summary.people.length > 0 
+                    ? summary.people.map(p => p.id).sort((a, b) => a - b)
+                    : [];
+                const peopleIdText = peopleIds.length > 0 
+                    ? `<strong style="color: #22d3ee; font-size: 1.2rem;">${peopleIds.length}</strong> <span style="color: var(--text-muted);">người (ID: ${peopleIds.join(', ')})</span>`
+                    : `<strong style="color: #22d3ee; font-size: 1.2rem;">${facesTotal}</strong> <span style="color: var(--text-muted);">khuôn mặt</span>`;
+
                 videoSummaryEl.className = '';
                 let summaryHtml = `
-                    <p>
-                        Đã xử lý <strong>${summary.total_frames ?? 0}</strong> khung hình,
-                        phát hiện <strong>${facesTotal}</strong> khuôn mặt và ghi nhận
-                        <strong>${smilesTotal}</strong> lần mỉm cười.
-                    </p>
+                    <div style="padding: 1.5rem; background: linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.7) 100%); border-radius: 16px; border: 2px solid rgba(99, 102, 241, 0.3); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);">
+                        <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid rgba(148, 163, 184, 0.2);">
+                            <p style="margin: 0; font-size: 1.05rem; line-height: 1.7;">
+                                <span style="color: var(--text-muted);">Đã xử lý</span> <strong style="color: #6366f1; font-size: 1.2rem;">${summary.total_frames ?? 0}</strong> <span style="color: var(--text-muted);">khung hình,</span><br>
+                                <span style="color: var(--text-muted);">phát hiện</span> ${peopleIdText} <span style="color: var(--text-muted);">và ghi nhận</span><br>
+                                <strong style="color: #22c55e; font-size: 1.2rem;">${smilesTotal}</strong> <span style="color: var(--text-muted);">lần mỉm cười.</span>
+                            </p>
+                        </div>
                 `;
                 if (durationText) {
-                    summaryHtml += `<p>Thời lượng ước tính của video: ${durationText}.</p>`;
+                    summaryHtml += `
+                        <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: rgba(99, 102, 241, 0.1); border-radius: 10px; margin-bottom: 0.75rem;">
+                            <span style="font-size: 1.5rem;">⏱️</span>
+                            <div style="flex: 1;">
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.2rem;">Thời lượng video</div>
+                                <strong style="font-size: 1.1rem; color: var(--accent);">${durationText}</strong>
+                            </div>
+                        </div>
+                    `;
                 }
                 if (avgFaces) {
-                    summaryHtml += `<p>Trung bình ${avgFaces} khuôn mặt trên mỗi khung hình được phân tích.</p>`;
+                    summaryHtml += `
+                        <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: rgba(34, 211, 238, 0.1); border-radius: 10px; margin-bottom: 0.75rem;">
+                            <span style="font-size: 1.5rem;">👥</span>
+                            <div style="flex: 1;">
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.2rem;">Trung bình khuôn mặt/khung hình</div>
+                                <strong style="font-size: 1.1rem; color: #22d3ee;">${avgFaces}</strong>
+                            </div>
+                        </div>
+                    `;
                 }
                 if (avgSmiles) {
-                    summaryHtml += `<p>Trung bình ${avgSmiles} lần mỉm cười trên mỗi khung hình được phân tích.</p>`;
+                    summaryHtml += `
+                        <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border-radius: 10px;">
+                            <span style="font-size: 1.5rem;">😊</span>
+                            <div style="flex: 1;">
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.2rem;">Trung bình nụ cười/khung hình</div>
+                                <strong style="font-size: 1.1rem; color: #22c55e;">${avgSmiles}</strong>
+                            </div>
+                        </div>
+                    `;
                 }
+                summaryHtml += '</div>';
                 videoSummaryEl.innerHTML = summaryHtml;
+
+                // Render tracking statistics if available
+                if (summary.people && summary.people.length > 0) {
+                    trackingStats.hidden = false;
+                    const token = data.token;
+                    // Sort people by total frames (most active first)
+                    const sortedPeople = [...summary.people].sort((a, b) => b.total_frames - a.total_frames);
+                    peopleList.innerHTML = sortedPeople.map((person, index) => {
+                        const snapshotUrl = person.snapshot ? `/api/snapshot/${token}/${person.snapshot}` : null;
+                        return `
+                        <div style="padding: 1.25rem; background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(30, 41, 59, 0.6) 100%); border-radius: 16px; border: 2px solid ${person.is_smiling ? 'rgba(34, 211, 238, 0.3)' : 'rgba(148, 163, 184, 0.2)'}; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); transition: all 0.3s ease;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; gap: 1rem;">
+                                <div style="display: flex; align-items: center; gap: 0.75rem; flex: 1;">
+                                    <div style="background: ${person.is_smiling ? 'linear-gradient(135deg, #22d3ee, #06b6d4)' : 'rgba(148, 163, 184, 0.2)'}; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.1rem; color: ${person.is_smiling ? '#0f172a' : '#94a3b8'};">
+                                        ${person.id}
+                                    </div>
+                                    <div>
+                                        <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Người ${index + 1}</div>
+                                        <strong style="font-size: 1.15rem; color: ${person.is_smiling ? '#22d3ee' : 'var(--text)'};">ID ${person.id}</strong>
+                                    </div>
+                                </div>
+                                ${snapshotUrl ? `
+                                    <div style="width: 80px; height: 80px; border-radius: 12px; overflow: hidden; border: 2px solid ${person.is_smiling ? 'rgba(34, 211, 238, 0.5)' : 'rgba(148, 163, 184, 0.3)'}; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);">
+                                        <img src="${snapshotUrl}" alt="Snapshot ID ${person.id}" style="width: 100%; height: 100%; object-fit: cover;" />
+                                    </div>
+                                ` : `
+                                    <span style="font-size: 3rem; filter: ${person.is_smiling ? 'drop-shadow(0 0 8px rgba(34, 211, 238, 0.6))' : 'none'};">${person.is_smiling ? '😊' : '😐'}</span>
+                                `}
+                            </div>
+                            
+                            <!-- Progress bar for smile ratio -->
+                            <div style="margin-bottom: 1rem;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                                    <span style="font-size: 0.85rem; color: var(--text-muted); font-weight: 500;">Tỉ lệ cười</span>
+                                    <strong style="font-size: 1.1rem; color: ${person.is_smiling ? '#22d3ee' : 'inherit'};">${(person.smile_ratio * 100).toFixed(1)}%</strong>
+                                </div>
+                                <div style="width: 100%; height: 8px; background: rgba(148, 163, 184, 0.15); border-radius: 999px; overflow: hidden;">
+                                    <div style="width: ${(person.smile_ratio * 100).toFixed(1)}%; height: 100%; background: ${person.is_smiling ? 'linear-gradient(90deg, #22d3ee, #06b6d4)' : 'rgba(148, 163, 184, 0.4)'}; transition: width 0.5s ease; box-shadow: ${person.is_smiling ? '0 0 8px rgba(34, 211, 238, 0.5)' : 'none'};"></div>
+                                </div>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; font-size: 0.9rem;">
+                                <div style="background: rgba(15, 23, 42, 0.5); padding: 0.75rem; border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.1);">
+                                    <div style="color: var(--text-muted); font-size: 0.75rem; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.3rem;">
+                                        <span>⏱️</span> Thời lượng
+                                    </div>
+                                    <strong style="font-size: 1.1rem; color: var(--accent);">${person.duration}s</strong>
+                                </div>
+                                <div style="background: rgba(15, 23, 42, 0.5); padding: 0.75rem; border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.1);">
+                                    <div style="color: var(--text-muted); font-size: 0.75rem; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.3rem;">
+                                        <span>📊</span> Tổng frames
+                                    </div>
+                                    <strong style="font-size: 1.1rem;">${person.total_frames}</strong>
+                                </div>
+                                <div style="background: rgba(15, 23, 42, 0.5); padding: 0.75rem; border-radius: 10px; border: 1px solid ${person.is_smiling ? 'rgba(34, 211, 238, 0.2)' : 'rgba(148, 163, 184, 0.1)'};">
+                                    <div style="color: var(--text-muted); font-size: 0.75rem; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.3rem;">
+                                        <span>😊</span> Frames cười
+                                    </div>
+                                    <strong style="font-size: 1.1rem; color: ${person.is_smiling ? '#22d3ee' : 'inherit'};">${person.smile_frames}</strong>
+                                </div>
+                                <div style="background: rgba(15, 23, 42, 0.5); padding: 0.75rem; border-radius: 10px; border: 1px solid ${person.is_smiling ? 'rgba(34, 211, 238, 0.2)' : 'rgba(148, 163, 184, 0.1)'};">
+                                    <div style="color: var(--text-muted); font-size: 0.75rem; margin-bottom: 0.25rem; display: flex; align-items: center; gap: 0.3rem;">
+                                        <span>⏰</span> T/gian cười
+                                    </div>
+                                    <strong style="font-size: 1.1rem; color: ${person.is_smiling ? '#22d3ee' : 'inherit'};">${person.smile_duration}s</strong>
+                                </div>
+                            </div>
+                        </div>
+                    `}).join('');
+                } else {
+                    trackingStats.hidden = true;
+                }
 
                 if (data.download_url) {
                     const videoResp = await fetch(data.download_url);
@@ -1354,6 +1623,26 @@
                     videoResult.style.display = 'block';
                     videoResultPlaceholder.style.display = 'none';
                     videoResult.load();
+                    
+                    // Add download button after video
+                    const existingBtn = document.getElementById('downloadVideoBtn');
+                    if (existingBtn) existingBtn.remove();
+                    
+                    const downloadBtn = document.createElement('a');
+                    downloadBtn.id = 'downloadVideoBtn';
+                    downloadBtn.href = resultVideoUrl;
+                    downloadBtn.download = `smile_detection_${Date.now()}.mp4`;
+                    downloadBtn.style.cssText = 'display: inline-block; margin-top: 1rem; padding: 0.9rem 1.8rem; background: linear-gradient(135deg, #22d3ee, #06b6d4); color: #0f172a; font-weight: 600; border-radius: 12px; text-decoration: none; box-shadow: 0 4px 12px rgba(34, 211, 238, 0.4); transition: all 0.3s ease; cursor: pointer;';
+                    downloadBtn.innerHTML = '⬇️ Tải video xuống';
+                    downloadBtn.onmouseover = () => {
+                        downloadBtn.style.transform = 'translateY(-2px)';
+                        downloadBtn.style.boxShadow = '0 6px 16px rgba(34, 211, 238, 0.5)';
+                    };
+                    downloadBtn.onmouseout = () => {
+                        downloadBtn.style.transform = 'translateY(0)';
+                        downloadBtn.style.boxShadow = '0 4px 12px rgba(34, 211, 238, 0.4)';
+                    };
+                    videoResult.parentElement.appendChild(downloadBtn);
                 } else {
                     videoResult.style.display = 'none';
                     videoResultPlaceholder.style.display = 'block';

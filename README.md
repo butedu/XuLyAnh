@@ -255,11 +255,38 @@ Mở trình duyệt: `http://127.0.0.1:8000`
 - Thống kê realtime số người cười
 
 ### 3. Xử Lý Video (CLI)
+
+**Video đơn giản (không tracking):**
 ```powershell
 python video_demo.py path/to/video.mp4 --output output_video.mp4
 ```
 
-Xử lý từng frame, ghi video có chú thích khuôn mặt và thống kê.
+**Video với Face Tracking (KHUYẾN NGHỊ - Chính xác hơn):**
+```powershell
+python video_demo_tracking.py path/to/video.mp4 --output output_tracked.mp4
+```
+
+**Tính năng Video Tracking:**
+- ✅ Gán ID cố định cho mỗi khuôn mặt
+- ✅ Tracking xuyên suốt video (không bị mất ID khi di chuyển)
+- ✅ Tự động phát hiện scene change và reset tracking
+- ✅ Giảm FPS xử lý (chỉ detect mỗi 3 frames) → Nhanh hơn 3x
+- ✅ Thống kê chính xác: tỷ lệ cười, thời lượng cười của từng người
+- ✅ Hiển thị ID và smile ratio trên mỗi khuôn mặt
+
+**Tùy chọn nâng cao:**
+```powershell
+# Giảm tải GPU - process mỗi 5 frames
+python video_demo_tracking.py video.mp4 --process-every 5
+
+# Điều chỉnh ngưỡng scene change
+python video_demo_tracking.py video.mp4 --scene-threshold 0.4
+
+# Dùng CPU
+python video_demo_tracking.py video.mp4 --device cpu
+```
+
+Xử lý từng frame, ghi video có chú thích khuôn mặt và thống kê chi tiết.
 
 ---
 

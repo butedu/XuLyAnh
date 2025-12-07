@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import shutil
 from pathlib import Path
 from uuid import uuid4
 
@@ -52,15 +53,23 @@ async def trang_chu() -> str:
 
 
 @app.post("/api/detect")
-async def phat_hien_nu_cuoi(file: UploadFile = File(...)) -> JSONResponse:
+async def phat_hien_nu_cuoi(
+    file: UploadFile = File(...),
+    threshold: float = Form(0.4)
+) -> JSONResponse:
     """API endpoint để phát hiện nụ cười trong ảnh tải lên.
     
     Tham số:
         file: File ảnh từ client
+        threshold: Ngưỡng xác suất cười (0-1)
         
     Trả về:
         JSON chứa kết quả phân tích và ảnh đã chú thích
     """
+    # Kiểm tra threshold
+    if not 0 <= threshold <= 1:
+        raise HTTPException(status_code=400, detail="Threshold phải từ 0 đến 1")
+    
     # Kiểm tra loại file
     if file.content_type is None or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Vui lòng tải lên file ảnh")
@@ -75,8 +84,15 @@ async def phat_hien_nu_cuoi(file: UploadFile = File(...)) -> JSONResponse:
         raise HTTPException(status_code=500, detail="Mô hình chưa sẵn sàng. Kiểm tra lại trọng số trong models/.")
     
     try:
+        # Tạm thời set threshold vào pipeline
+        old_threshold = dich_vu.pipeline.config.smile_threshold
+        dich_vu.pipeline.config.smile_threshold = threshold
+        
         ket_qua_phan_tich = dich_vu.phan_tich_anh_bytes(du_lieu)
         anh_chu_thich_bytes = dich_vu.chu_thich_anh(du_lieu, ket_qua_phan_tich)
+        
+        # Khôi phục threshold cũ
+        dich_vu.pipeline.config.smile_threshold = old_threshold
     except Exception as exc:  # noqa: BLE001 - hiển thị lỗi cho client
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     
@@ -107,6 +123,22 @@ def _safe_unlink(path: Path) -> None:
         pass
 
 
+def _cleanup_old_videos() -> None:
+    """Xóa tất cả video cũ và thư mục snapshot trong video_results."""
+    try:
+        if VIDEO_OUTPUT_DIR.exists():
+            for item in VIDEO_OUTPUT_DIR.iterdir():
+                try:
+                    if item.is_file():
+                        item.unlink()
+                    elif item.is_dir():
+                        shutil.rmtree(item)
+                except OSError:
+                    pass
+    except Exception:
+        pass
+
+
 @app.post("/api/detect-video")
 async def phat_hien_nu_cuoi_video(
     background: BackgroundTasks,
@@ -114,12 +146,16 @@ async def phat_hien_nu_cuoi_video(
     frame_skip: int = Form(0),
     resize_width: int | None = Form(None),
     resize_height: int | None = Form(None),
+    threshold: float = Form(0.4),
 ) -> JSONResponse:
     if file.content_type is None or not file.content_type.startswith("video/"):
         raise HTTPException(status_code=400, detail="Vui lòng tải lên file video hợp lệ")
 
     if frame_skip < 0:
         raise HTTPException(status_code=400, detail="frame_skip phải lớn hơn hoặc bằng 0")
+    
+    if not 0 <= threshold <= 1:
+        raise HTTPException(status_code=400, detail="Threshold phải từ 0 đến 1")
 
     if (resize_width is None) != (resize_height is None):
         raise HTTPException(status_code=400, detail="Cần cung cấp cả chiều rộng và chiều cao khi resize")
@@ -127,10 +163,13 @@ async def phat_hien_nu_cuoi_video(
     if dich_vu is None:
         raise HTTPException(status_code=500, detail="Mô hình chưa sẵn sàng. Kiểm tra lại trọng số trong models/.")
 
+    # Xóa tất cả video cũ trước khi xử lý video mới
+    _cleanup_old_videos()
+    
     token = uuid4().hex
     input_suffix = Path(file.filename or "upload.mp4").suffix or ".mp4"
     input_path = VIDEO_OUTPUT_DIR / f"{token}_input{input_suffix}"
-    output_path = VIDEO_OUTPUT_DIR / f"{token}_annotated.mp4"
+    output_path = VIDEO_OUTPUT_DIR / f"{token}_tracking.mp4"
 
     try:
         with input_path.open("wb") as buffer:
@@ -149,12 +188,116 @@ async def phat_hien_nu_cuoi_video(
                 raise HTTPException(status_code=400, detail="Kích thước resize phải dương")
             resize = (int(resize_width), int(resize_height))
 
+        # Tạm thời set threshold
+        old_threshold = dich_vu.pipeline.config.smile_threshold
+        dich_vu.pipeline.config.smile_threshold = threshold
+        
         stats = dich_vu.xu_ly_video_file(
             duong_dan_vao=input_path,
             duong_dan_ra=output_path,
             frame_skip=frame_skip,
             resize=resize,
         )
+        
+        # Khôi phục threshold
+        dich_vu.pipeline.config.smile_threshold = old_threshold
+    except HTTPException:
+        _safe_unlink(input_path)
+        raise
+    except Exception as exc:  # noqa: BLE001
+        _safe_unlink(input_path)
+        _safe_unlink(output_path)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    background.add_task(_safe_unlink, input_path)
+
+    async with VIDEO_LOCK:
+        VIDEO_RESULTS[token] = {"path": output_path, "summary": stats}
+
+    asyncio.create_task(_cleanup_video_result(token))
+
+    return JSONResponse(
+        content={
+            "summary": stats,
+            "token": token,
+            "download_url": f"/api/video-results/{token}",
+        }
+    )
+
+
+@app.post("/api/detect-video-tracking")
+async def phat_hien_nu_cuoi_video_tracking(
+    background: BackgroundTasks,
+    file: UploadFile = File(...),
+    process_every: int = Form(3),
+    frame_skip: int = Form(0),
+    scene_threshold: float = Form(0.35),
+    resize_width: int | None = Form(None),
+    resize_height: int | None = Form(None),
+    threshold: float = Form(0.4),
+) -> JSONResponse:
+    """API endpoint xử lý video với face tracking và thống kê theo người."""
+    if file.content_type is None or not file.content_type.startswith("video/"):
+        raise HTTPException(status_code=400, detail="Vui lòng tải lên file video hợp lệ")
+
+    if process_every < 1:
+        raise HTTPException(status_code=400, detail="process_every phải lớn hơn 0")
+
+    if frame_skip < 0:
+        raise HTTPException(status_code=400, detail="frame_skip phải >= 0")
+
+    if not (0.0 <= scene_threshold <= 1.0):
+        raise HTTPException(status_code=400, detail="scene_threshold phải từ 0.0 đến 1.0")
+    
+    if not 0 <= threshold <= 1:
+        raise HTTPException(status_code=400, detail="Threshold phải từ 0 đến 1")
+
+    if (resize_width is None) != (resize_height is None):
+        raise HTTPException(status_code=400, detail="Cần cung cấp cả chiều rộng và chiều cao khi resize")
+
+    if dich_vu is None:
+        raise HTTPException(status_code=500, detail="Mô hình chưa sẵn sàng. Kiểm tra lại trọng số trong models/.")
+
+    # Xóa tất cả video cũ trước khi xử lý video mới
+    _cleanup_old_videos()
+    
+    token = uuid4().hex
+    input_suffix = Path(file.filename or "upload.mp4").suffix or ".mp4"
+    input_path = VIDEO_OUTPUT_DIR / f"{token}_input{input_suffix}"
+    output_path = VIDEO_OUTPUT_DIR / f"{token}_tracking.mp4"
+
+    try:
+        with input_path.open("wb") as buffer:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                buffer.write(chunk)
+
+        if input_path.stat().st_size == 0:
+            raise HTTPException(status_code=400, detail="File video rỗng")
+
+        resize = None
+        if resize_width is not None and resize_height is not None:
+            if resize_width <= 0 or resize_height <= 0:
+                raise HTTPException(status_code=400, detail="Kích thước resize phải dương")
+            resize = (int(resize_width), int(resize_height))
+
+        # Tạm thời set threshold
+        old_threshold = dich_vu.pipeline.config.smile_threshold
+        dich_vu.pipeline.config.smile_threshold = threshold
+        
+        stats = dich_vu.xu_ly_video_tracking(
+            duong_dan_vao=input_path,
+            duong_dan_ra=output_path,
+            process_every=process_every,
+            frame_skip=frame_skip,
+            scene_threshold=scene_threshold,
+            resize=resize,
+        )
+        
+        # Khôi phục threshold
+        dich_vu.pipeline.config.smile_threshold = old_threshold
     except HTTPException:
         _safe_unlink(input_path)
         raise
@@ -196,6 +339,31 @@ async def tai_video_da_chu_thich(token: str) -> FileResponse:
         media_type="video/mp4",
         filename=f"smile-counter-{token}.mp4",
     )
+
+
+@app.get("/api/snapshot/{token}/{filename}")
+async def get_snapshot(token: str, filename: str) -> FileResponse:
+    """Lấy ảnh snapshot của người cười trong video tracking."""
+    async with VIDEO_LOCK:
+        info = VIDEO_RESULTS.get(token)
+    
+    if info is None:
+        raise HTTPException(status_code=404, detail="Token không hợp lệ hoặc đã hết hạn")
+    
+    # Lấy snapshot_dir từ summary
+    summary = info.get("summary", {})
+    snapshot_dir_name = summary.get("snapshot_dir")
+    
+    if not snapshot_dir_name:
+        raise HTTPException(status_code=404, detail="Không có snapshot cho video này")
+    
+    snapshot_path = VIDEO_OUTPUT_DIR / snapshot_dir_name / filename
+    
+    if not snapshot_path.exists():
+        raise HTTPException(status_code=404, detail="Ảnh snapshot không tồn tại")
+    
+    return FileResponse(path=snapshot_path, media_type="image/jpeg")
+
 
 
 if __name__ == "__main__":
