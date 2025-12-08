@@ -8,6 +8,7 @@ from typing import Tuple
 import torch
 from torch import Tensor, nn
 
+# Quy ước kích thước input: (64,64). Quan trọng để transforms/resizing khớp với model. 
 IMAGE_SIZE: Tuple[int, int] = (64, 64)
 
 
