@@ -28,7 +28,6 @@ VIDEO_LOCK = asyncio.Lock()
 
 dich_vu: DichVuNhanDienCuoi | None = None
 
-
 @app.on_event("startup")
 async def khoi_dong() -> None:
     """Tải mô hình khi khởi động."""
@@ -57,15 +56,14 @@ async def phat_hien_nu_cuoi(
     file: UploadFile = File(...),
     threshold: float = Form(0.4)
 ) -> JSONResponse:
-    """API endpoint để phát hiện nụ cười trong ảnh tải lên.
+    # API endpoint để phát hiện nụ cười trong ảnh tải lên.
     
-    Tham số:
-        file: File ảnh từ client
-        threshold: Ngưỡng xác suất cười (0-1)
+    # Tham số:
+        # file: File ảnh từ client
+        # threshold: Ngưỡng xác suất cười (0-1)
         
-    Trả về:
-        JSON chứa kết quả phân tích và ảnh đã chú thích
-    """
+    # Trả về:
+        # JSON chứa kết quả phân tích và ảnh đã chú thích
     # Kiểm tra threshold
     if not 0 <= threshold <= 1:
         raise HTTPException(status_code=400, detail="Threshold phải từ 0 đến 1")
