@@ -3,100 +3,101 @@
 
 # ============ Data Configuration ============
 data:
-  image_root: "data/images"
-  split_dir: "data/processed/genki4k"
-  output_dir: "models"
-  image_size: [64, 64]
+  image_root: "data/images"            # Thư mục chứa ảnh gốc (GENKI-4K hoặc dataset khác)
+  split_dir: "data/processed/genki4k"  # Thư mục chứa train.csv, val.csv, test.csv
+  output_dir: "models"                 # Nơi lưu model, checkpoint, log
+  image_size: [64, 64]                 # Kích thước ảnh đầu vào cho CNN
 
 # ============ Training Hyperparameters ============
 training:
-  epochs: 50
-  batch_size: 64
-  learning_rate: 5.0e-4
-  weight_decay: 1.0e-4  # L2 regularization
+  epochs: 50                           # Số vòng lặp huấn luyện
+  batch_size: 64                       # Batch size cho DataLoader
+  learning_rate: 5.0e-4                # Tốc độ học (AdamW khá phù hợp giá trị này)
+  weight_decay: 1.0e-4                 # L2 regularization (giúp tránh overfitting)
   
   # Learning rate scheduler
   scheduler:
-    type: "cosine"  # Options: "step", "cosine", "reduce_on_plateau"
-    warmup_epochs: 5
-    min_lr: 1.0e-6
-    # For step scheduler
-    step_size: 10
-    gamma: 0.5
-  
+    type: "cosine"                     # Dùng CosineAnnealingLR
+    warmup_epochs: 5                   # Làm nóng LR cho 5 epochs đầu
+    min_lr: 1.0e-6                     # LR nhỏ nhất trong chu kỳ cosine
+    
+    # Cho StepLR (chỉ kích hoạt nếu scheduler.type = "step")
+    step_size: 10                      # Giảm LR mỗi 10 epochs
+    gamma: 0.5                         # LR = LR * gamma
+
   # Optimizer settings
   optimizer:
-    type: "adamw"  # Options: "adam", "adamw", "sgd"
-    momentum: 0.9  # Only for SGD
-    betas: [0.9, 0.999]  # For Adam/AdamW
+    type: "adamw"                      # Optimizer chính. AdamW thường tốt nhất cho CNN nhỏ
+    momentum: 0.9                      # Chỉ dùng khi type = "sgd"
+    betas: [0.9, 0.999]                # Tham số của Adam/AdamW
 
 # ============ Model Architecture ============
 model:
-  name: "SmileNetV2"  # Options: "SmileNet", "SmileNetV2"
-  dropout: 0.3
-  use_se_block: true  # Squeeze-and-Excitation attention
-  use_deep_residual: true  # Deeper residual blocks
+  name: "SmileNetV2"                   # Kiến trúc CNN: SmileNet hoặc SmileNetV2
+  dropout: 0.3                         # Dropout để giảm overfitting
+  use_se_block: true                   # Dùng SE block (Squeeze & Excitation)
+  use_deep_residual: true              # Dùng nhiều residual block hơn
 
 # ============ Data Augmentation ============
 augmentation:
   # Basic augmentation
-  horizontal_flip: true
-  random_rotation: 10  # degrees
-  
+  horizontal_flip: true                # Lật ngang ảnh
+  random_rotation: 10                  # Xoay ±10°
+
   # Color augmentation
   color_jitter:
     brightness: 0.3
     contrast: 0.3
     saturation: 0.2
-    hue: 0.1
-  
+    hue: 0.1                             # Thay đổi màu sắc nhẹ
+
   # Advanced augmentation
   random_erasing:
-    probability: 0.3
+    probability: 0.3                    # Xóa ngẫu nhiên một vùng của ảnh
     scale: [0.02, 0.15]
     ratio: [0.3, 3.3]
-  
+
   gaussian_blur:
-    probability: 0.2
+    probability: 0.2                    # Làm mờ Gaussian để mô phỏng noise
     kernel_size: 5
-  
-  # Normalization (ImageNet stats)
+
+  # Normalization (ImageNet mean/std)
   normalize:
-    mean: [0.485, 0.456, 0.406]
+    mean: [0.485, 0.456, 0.406]         # Chuẩn hóa – rất quan trọng cho CNN
     std: [0.229, 0.224, 0.225]
 
 # ============ Training Settings ============
 settings:
-  seed: 42
-  num_workers: 4
-  pin_memory: true
-  device: "cuda"  # Options: "cuda", "cpu", "auto"
-  
-  # Mixed precision training (faster on NVIDIA GPU)
-  use_amp: true  # Automatic Mixed Precision
-  
+  seed: 42                              # Seed cố định để tái lập kết quả
+  num_workers: 4                        # Số luồng DataLoader
+  pin_memory: true                      # Tăng tốc load dữ liệu
+  device: "cuda"                        # "auto" / "cuda" / "cpu"
+
+  # Mixed precision training
+  use_amp: true                         # Dùng FP16 để tăng tốc + giảm VRAM
+
   # Gradient clipping
   grad_clip:
     enabled: true
-    max_norm: 1.0
-  
+    max_norm: 1.0                       # Tránh gradient explosion
+
   # Early stopping
   early_stopping:
     enabled: true
-    patience: 15
-    min_delta: 0.001  # Minimum improvement in F1 score
-  
+    patience: 15                        # Nếu F1 không cải thiện trong 15 epoch → dừng
+    min_delta: 0.001                    # Mức cải thiện tối thiểu
+
   # Checkpoint saving
-  save_best_only: false  # Save all checkpoints or only best
-  save_frequency: 5  # Save checkpoint every N epochs
+  save_best_only: false                 # Lưu mọi checkpoint hay chỉ checkpoint tốt nhất
+  save_frequency: 5                     # Lưu checkpoint mỗi 5 epoch
 
 # ============ Validation & Testing ============
 validation:
-  metric: "f1"  # Primary metric: "f1", "accuracy", "precision", "recall"
-  test_after_training: true  # Run test set evaluation after training
+  metric: "f1"                          # Tiêu chí chọn mô hình tốt nhất
+  test_after_training: true             # Chạy test set sau khi train xong
 
 # ============ Logging ============
 logging:
-  log_interval: 10  # Log every N batches
-  tensorboard: false  # Enable TensorBoard logging
-  wandb: false  # Enable Weights & Biases logging
+  log_interval: 10                      # In log mỗi 10 batch
+  tensorboard: false                    # Bật/tắt TensorBoard
+  wandb: false                          # Bật/tắt Weights & Biases
